@@ -3,7 +3,7 @@
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
-
+#define DEBUG
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/platform_device.h>
@@ -42,7 +42,7 @@
 #define ADC_MODE_VAL_ULP1     0x09
 #define ADC_MODE_VAL_ULP2     0x0B
 
-#define NUM_ATTEMPTS 20
+#define NUM_ATTEMPTS 5
 
 #define DAPM_MICBIAS1_STANDALONE "MIC BIAS1 Standalone"
 #define DAPM_MICBIAS2_STANDALONE "MIC BIAS2 Standalone"
@@ -80,8 +80,6 @@ enum {
 	WCD_ADC2_MODE,
 	WCD_ADC3_MODE,
 	WCD_ADC4_MODE,
-        WCD_HPHL_EN,
-        WCD_EAR_EN,
 };
 
 enum {
@@ -789,13 +787,10 @@ static int wcd938x_codec_ear_dac_event(struct snd_soc_dapm_widget *w,
 			snd_soc_component_update_bits(component,
 				WCD938X_DIGITAL_CDC_DIG_CLK_CTL, 0x04, 0x00);
 		} else {
-			if (!(test_bit(WCD_HPHL_EN, &wcd938x->status_mask))) {
-				snd_soc_component_update_bits(component,
-					WCD938X_DIGITAL_CDC_HPH_GAIN_CTL, 0x04, 0x00);
-					snd_soc_component_update_bits(component,
-						WCD938X_DIGITAL_CDC_DIG_CLK_CTL,
-						0x01, 0x00);
-			}
+			snd_soc_component_update_bits(component,
+				WCD938X_DIGITAL_CDC_HPH_GAIN_CTL, 0x04, 0x00);
+			snd_soc_component_update_bits(component,
+				WCD938X_DIGITAL_CDC_DIG_CLK_CTL, 0x01, 0x00);
 			if (wcd938x->comp1_enable)
 				snd_soc_component_update_bits(component,
 					WCD938X_DIGITAL_CDC_COMP_CTL_0,
@@ -1029,7 +1024,6 @@ static int wcd938x_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
 		set_bit(HPH_PA_DELAY, &wcd938x->status_mask);
 		snd_soc_component_update_bits(component,
 				WCD938X_DIGITAL_PDM_WD_CTL0, 0x07, 0x03);
-		set_bit(WCD_HPHL_EN, &wcd938x->status_mask);
 		break;
 	case SND_SOC_DAPM_POST_PMU:
 		/*
@@ -1064,14 +1058,12 @@ static int wcd938x_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
 					WCD938X_IRQ_HPHL_PDM_WD_INT);
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
-		if (!test_bit(WCD_EAR_EN, &wcd938x->status_mask)) {
-			if (wcd938x->update_wcd_event)
-				wcd938x->update_wcd_event(wcd938x->handle,
-							SLV_BOLERO_EVT_RX_MUTE,
-							(WCD_RX1 << 0x10 | 0x1));
-			wcd_disable_irq(&wcd938x->irq_info,
-						WCD938X_IRQ_HPHL_PDM_WD_INT);
-		}
+		if (wcd938x->update_wcd_event)
+			wcd938x->update_wcd_event(wcd938x->handle,
+						SLV_BOLERO_EVT_RX_MUTE,
+						(WCD_RX1 << 0x10 | 0x1));
+		wcd_disable_irq(&wcd938x->irq_info,
+					WCD938X_IRQ_HPHL_PDM_WD_INT);
 		if (wcd938x->update_wcd_event && wcd938x->comp1_enable)
 			wcd938x->update_wcd_event(wcd938x->handle,
 					SLV_BOLERO_EVT_RX_COMPANDER_SOFT_RST,
@@ -1120,7 +1112,6 @@ static int wcd938x_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
 			snd_soc_component_update_bits(component,
 						WCD938X_LDOH_MODE,
 						0x80, 0x00);
-		clear_bit(WCD_HPHL_EN, &wcd938x->status_mask);
 		break;
 	};
 	return ret;
@@ -1218,12 +1209,10 @@ static int wcd938x_codec_enable_ear_pa(struct snd_soc_dapm_widget *w,
 			snd_soc_component_update_bits(component,
 					WCD938X_DIGITAL_PDM_WD_CTL2,
 					0x01, 0x01);
-		else {
+		else
 			snd_soc_component_update_bits(component,
 					WCD938X_DIGITAL_PDM_WD_CTL0,
 					0x07, 0x03);
-			set_bit(WCD_EAR_EN, &wcd938x->status_mask);
-		}
 		if (!wcd938x->comp1_enable)
 			snd_soc_component_update_bits(component,
 				WCD938X_ANA_EAR_COMPANDER_CTL, 0x80, 0x80);
@@ -1261,14 +1250,12 @@ static int wcd938x_codec_enable_ear_pa(struct snd_soc_dapm_widget *w,
 						SLV_BOLERO_EVT_RX_MUTE,
 						(WCD_RX3 << 0x10 | 0x1));
 		} else {
-			if(!test_bit(WCD_HPHL_EN, &wcd938x->status_mask)) {
-				wcd_disable_irq(&wcd938x->irq_info,
-						WCD938X_IRQ_HPHL_PDM_WD_INT);
-				if (wcd938x->update_wcd_event)
-					wcd938x->update_wcd_event(wcd938x->handle,
-							SLV_BOLERO_EVT_RX_MUTE,
-							(WCD_RX1 << 0x10 | 0x1));
-			}
+			wcd_disable_irq(&wcd938x->irq_info,
+					WCD938X_IRQ_HPHL_PDM_WD_INT);
+			if (wcd938x->update_wcd_event)
+				wcd938x->update_wcd_event(wcd938x->handle,
+						SLV_BOLERO_EVT_RX_MUTE,
+						(WCD_RX1 << 0x10 | 0x1));
 		}
 		break;
 	case SND_SOC_DAPM_POST_PMD:
@@ -1281,12 +1268,10 @@ static int wcd938x_codec_enable_ear_pa(struct snd_soc_dapm_widget *w,
 			snd_soc_component_update_bits(component,
 					WCD938X_DIGITAL_PDM_WD_CTL2,
 					0x01, 0x00);
-		else {
+		else
 			snd_soc_component_update_bits(component,
 					WCD938X_DIGITAL_PDM_WD_CTL0,
 					0x07, 0x00);
-			clear_bit(WCD_EAR_EN, &wcd938x->status_mask);
-		}
 		wcd_cls_h_fsm(component, &wcd938x->clsh_info,
 			     WCD_CLSH_EVENT_POST_PA,
 			     WCD_CLSH_STATE_EAR,
@@ -1346,16 +1331,13 @@ static int wcd938x_enable_rx1(struct snd_soc_dapm_widget *w,
 			wcd938x_rx_connect_port(component, COMP_L, true);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
-		 if (!test_bit(WCD_HPHL_EN, &wcd938x->status_mask) &&
-				!test_bit(WCD_EAR_EN, &wcd938x->status_mask)) {
-			wcd938x_rx_connect_port(component, HPH_L, false);
-			if (wcd938x->comp1_enable)
-				wcd938x_rx_connect_port(component, COMP_L, false);
-			wcd938x_rx_clk_disable(component);
-			snd_soc_component_update_bits(component,
+		wcd938x_rx_connect_port(component, HPH_L, false);
+		if (wcd938x->comp1_enable)
+			wcd938x_rx_connect_port(component, COMP_L, false);
+		wcd938x_rx_clk_disable(component);
+		snd_soc_component_update_bits(component,
 				WCD938X_DIGITAL_CDC_DIG_CLK_CTL,
 				0x01, 0x00);
-		}
 		break;
 	};
 
@@ -2154,8 +2136,8 @@ static int wcd938x_get_logical_addr(struct swr_device *swr_dev)
 	int num_retry = NUM_ATTEMPTS;
 
 	do {
-		/* retry after 4ms */
-		usleep_range(4000, 4010);
+		/* retry after 1ms */
+		usleep_range(1000, 1010);
 		ret = swr_get_logical_dev_num(swr_dev, swr_dev->addr, &devnum);
 	} while (ret && --num_retry);
 
